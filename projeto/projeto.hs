@@ -1,7 +1,7 @@
 type Id = String
 type Numero = Double
 
-data Definicao = Def Id Termo
+data Definicao = Def Id Expressao -- antes tava como Termo, que não existe
 
 -- TODO: pode ser this também
 data LValue = LVar Id                      -- L-Value de uma variável simples, ex: "x"
@@ -16,7 +16,7 @@ data Expressao = Lit Numero
                | New Id -- não altera o estado, mas altera a heap
                | InstanceOf Expressao Id
 
-               | Lam [Id] Comando
+               | Lam [Id] Expressao -- corpo de lambda deve ser uma expressão, não um comando
                | CallMethod Expressao Id [Expressao]
                | Apl Expressao [Expressao]
 
@@ -32,6 +32,7 @@ data Comando = Atr LValue Expressao
 type Endereco = Int
 
 data Valor = Num Numero                                      -- número
+           | BoolVal Bool                                    -- acho que precisa de um bool para if, while, etc.
            | ObjectVal Endereco                              -- ponteiro
            | Fun ([Valor] -> Estado -> (Valor, Estado))      -- função. TODO: precisa receber a heap também
            | Nulo                                            -- resultado de operações sem retorno ou valor nulo
