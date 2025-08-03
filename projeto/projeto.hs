@@ -6,6 +6,7 @@ data Definicao = Def Id Expressao -- antes tava como Termo, que não existe
 -- TODO: pode ser this também
 data LValue = LVar Id                      -- L-Value de uma variável simples, ex: "x"
             | LAttr Expressao Id           -- L-Value de um atributo, ex: "x" em "p.x"
+            | LThis
 
 -- sempre produzem um valor. pode ser um LValue
 data Expressao = Lit Numero
