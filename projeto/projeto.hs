@@ -54,97 +54,68 @@ type Objeto = (Id, [(Id, Valor)])
 type Ambiente = [(Id,Valor)]
 type Estado = [(Endereco, Objeto)]
 
--- Busca o valor de uma variável no ambiente
-getValor :: Id -> Ambiente -> Valor
-getValor id amb = case lookup id amb of
-    Just val -> val
-    Nothing  -> Erro ("Variavel nao encontrada: " ++ id)
+getValor :: Id -> Ambiente -> Valor -- busca o valor de uma variável no ambiente
+getValor id [] = Erro ("Variavel nao encontrada: " ++ id)
+getValor id ((idAtual, val) : resto)
+    | id == idAtual = val
+    | otherwise     = getValor id resto
 
--- Atualiza ou adiciona um valor no ambiente (imutável)
-setValor :: Id -> Valor -> Ambiente -> Ambiente
+setValor :: Id -> Valor -> Ambiente -> Ambiente -- -- atualiza ou adiciona um valor no ambiente
 setValor id val [] = [(id, val)]
-setValor id val ((idExistente, valExistente):resto) =
-    if id == idExistente
-    then (id, val) : resto
-    else (idExistente, valExistente) : setValor id val resto
+setValor id val ((idExistente, valExistente):resto) = if id == idExistente then (id, val) : resto else (idExistente, valExistente) : setValor id val resto
 
 intExpressao :: (Maybe Endereco) -> Ambiente -> Estado -> Expressao -> (Valor, Ambiente, Estado)
 intExpressao ctx amb est expr = case expr of
     (Lit n) -> (Num n, amb, est)
     (Var (LVar id)) -> (getValor id amb, amb, est)
     (Som e1 e2) ->
-        let (v1, _, _) = intExpressao ctx amb est e1
-            (v2, _, _) = intExpressao ctx amb est e2
+        let (v1, amb1, est1) = intExpressao ctx amb est e1
+            (v2, amb2, est2) = intExpressao ctx amb1 est1 e2
         in case (v1, v2) of
-            (Num n1, Num n2) -> (Num (n1 + n2), amb, est)
-            _ -> (Erro "Erro de tipo na soma", amb, est)
+            (Num n1, Num n2) -> (Num (n1 + n2), amb2, est2)
+            _ -> (Erro "Erro de tipo na soma", amb2, est2)
 
-    -- Caso especial para nossa função "mágica"
-    (Apl (Var (LVar "checar_limite")) [arg]) ->
-        let (valArg, _, _) = intExpressao ctx amb est arg
-        in case valArg of
-            -- A "mágica": retorna True se o número for < 3, False caso contrário
-            (Num n) -> if n < 3 then (BoolVal True, amb, est) else (BoolVal False, amb, est)
-            _ -> (Erro "Argumento invalido para checar_limite", amb, est)
+    (Apl (Var (LVar "menorQue")) [arg1, arg2]) ->
+        let (v1, amb1, est1) = intExpressao ctx amb est arg1
+            (v2, amb2, est2) = intExpressao ctx amb1 est1 arg2
+        in case (v1, v2) of
+            (Num n1, Num n2) -> (BoolVal (n1 < n2), amb2, est2)
+            _ -> (Erro "Argumentos invalidos para o operador 'menorQue'", amb2, est2)
 
-    _ -> (Erro "Expressao nao implementada para teste", amb, est)
+    _ -> (Erro ("Expressao nao implementada para teste: " ++ show expr), amb, est)
 
 intComando :: (Maybe Endereco) -> Ambiente -> Estado -> Comando -> (Ambiente, Estado)
 intComando ctx amb est cmd = case cmd of
     (Atr (LVar id) expr) ->
         let (val, ambAposExpr, estAposExpr) = intExpressao ctx amb est expr
         in (setValor id val ambAposExpr, estAposExpr)
-
     (Seq c1 c2) ->
         let (ambAposC1, estAposC1) = intComando ctx amb est c1
         in intComando ctx ambAposC1 estAposC1 c2
-
     (While cond corpo) -> intWhile ctx amb est (While cond corpo)
-
-    _ -> error "Comando nao implementado para teste"
+    _ -> error ("Comando nao implementado para teste: " ++ show cmd)
 
 intWhile :: (Maybe Endereco) -> Ambiente -> Estado -> Comando -> (Ambiente, Estado)
 intWhile ctx amb est (While cond corpo) =
-    -- 1. Avalia a expressão da condição no estado atual
     let (resultado, ambAposCond, estAposCond) = intExpressao ctx amb est cond
-    in
-        -- 2. Analisa o resultado da condição
-        case resultado of
-            -- 3. CASO 1: A condição é VERDADEIRA
-            (BoolVal True) ->
-                -- 3a. Executa o corpo do laço
-                let (ambAposCorpo, estAposCorpo) = intComando ctx ambAposCond estAposCond corpo
-                -- 3b. RECURSÃO: Tenta executar o laço novamente, no novo estado
-                in intWhile ctx ambAposCorpo estAposCorpo (While cond corpo)
+    in case resultado of
+        (BoolVal True) ->
+            let (ambAposCorpo, estAposCorpo) = intComando ctx ambAposCond estAposCond corpo
+            in intWhile ctx ambAposCorpo estAposCorpo (While cond corpo)
+        (BoolVal False) -> (ambAposCond, estAposCond)
+        _ -> error ("Erro de Tipo: A condição do 'while' deve ser um Booleano, mas foi: " ++ show resultado)
 
-            -- 4. CASO 2: A condição é FALSA
-            (BoolVal False) ->
-                -- 4a. O laço termina. Retorna o estado como estava logo após a condição ser avaliada como falsa.
-                (ambAposCond, estAposCond)
+-- i = 10
+testeAtr :: Comando
+testeAtr = Atr (LVar "i") (Lit 10)
 
-            -- 5. CASO 3: A condição não resultou em um booleano. É um erro de tipo!
-            _ -> error ("Erro de Tipo: A condição do 'while' deve ser um Booleano, mas foi: " ++ show resultado)
+-- i = 10; j = i + 5
+testeSeq :: Comando
+testeSeq = Seq (Atr (LVar "i") (Lit 10))
+               (Atr (LVar "j") (Som (Var (LVar "i")) (Lit 5)))
 
-main :: IO ()
-main = do
-    putStrLn "--- Iniciando Teste do While ---"
-    
-    -- Definindo o programa de teste usando a AST
-    let condWhile = Apl (Var (LVar "checar_limite")) [Var (LVar "i")]
-    let corpoWhile = Atr (LVar "i") (Som (Var (LVar "i")) (Lit 1))
-    let loopWhile = While condWhile corpoWhile
-    let initCmd = Atr (LVar "i") (Lit 0)
-    let programaTeste = Seq initCmd loopWhile
-    
-    -- Configurando o ambiente inicial vazio
-    let ambienteInicial = []
-    let estadoInicial = []
-    
-    putStrLn $ "Programa a ser executado: " ++ show programaTeste
-    
-    -- Executando o interpretador
-    let (ambienteFinal, estadoFinal) = intComando Nothing ambienteInicial estadoInicial programaTeste
-    
-    putStrLn "\n--- Execucao Concluida ---"
-    putStrLn "Ambiente Final:"
-    print ambienteFinal
+-- i = 0; while (i < 3) {i = i + 1;}
+testeWhile :: Comando
+testeWhile = Seq (Atr (LVar "i") (Lit 0))
+                 (While (Apl (Var (LVar "menorQue")) [Var (LVar "i"), Lit 3])
+                 (Atr (LVar "i") (Som (Var (LVar "i")) (Lit 1))))
