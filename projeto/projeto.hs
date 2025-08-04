@@ -55,16 +55,14 @@ type Ambiente = [(Id,Valor)]
 type Estado = [(Endereco, Objeto)]
 
 getValor :: Id -> Ambiente -> Valor -- busca o valor de uma variável no ambiente
-getValor id amb = case lookup id amb of -- usa lookup para procurar o id no ambiente
-    Just val -> val
-    Nothing  -> Erro ("Variavel nao encontrada: " ++ id)
+getValor id [] = Erro ("Variavel nao encontrada: " ++ id)
+getValor id ((idAtual, val) : resto)
+    | id == idAtual = val
+    | otherwise     = getValor id resto
 
 setValor :: Id -> Valor -> Ambiente -> Ambiente -- -- atualiza ou adiciona um valor no ambiente
 setValor id val [] = [(id, val)]
-setValor id val ((idExistente, valExistente):resto) =
-    if id == idExistente
-    then (id, val) : resto
-    else (idExistente, valExistente) : setValor id val resto
+setValor id val ((idExistente, valExistente):resto) = if id == idExistente then (id, val) : resto else (idExistente, valExistente) : setValor id val resto
 
 intExpressao :: (Maybe Endereco) -> Ambiente -> Estado -> Expressao -> (Valor, Ambiente, Estado)
 intExpressao ctx amb est expr = case expr of
