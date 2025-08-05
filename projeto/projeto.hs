@@ -136,7 +136,7 @@ intWhile ctx amb est heap (While cond corpo) =
         (BoolVal False) -> (amb1, est1, heap1)
         _ -> error ("Erro de Tipo: A condição do 'while' deve ser um Booleano, mas foi: " ++ show resultado)
 
-
+{-
 -- i = 10
 testeAtr :: Comando
 testeAtr = Atr (LVar "i") (Lit 10)
@@ -151,3 +151,4 @@ testeWhile :: Comando
 testeWhile = Seq (Atr (LVar "i") (Lit 0))
                  (While (Apl (Var (LVar "menorQue")) [Var (LVar "i"), Lit 3])
                         (Atr (LVar "i") (Som (Var (LVar "i")) (Lit 1))))
+-}
