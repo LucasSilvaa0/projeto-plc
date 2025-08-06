@@ -1,3 +1,5 @@
+import Data.List (intercalate)
+
 type Id = String
 type Numero = Double
 
@@ -22,7 +24,7 @@ data Comando = Atr LValue Expressao
                 | If Expressao Comando Comando 
                 | While Expressao Comando 
                 | For Comando Expressao Comando Comando 
-                | Classe Id [Id] [Definicao] 
+                | Class Id [Id] [Definicao] 
                 | CmdExpr Expressao 
                 deriving (Show)
 
@@ -33,7 +35,8 @@ data Definicao = Def Id Expressao
 type Endereco = Int
 
 data Valor = Num Numero 
-            | BoolVal Bool 
+            | BoolVal Bool
+            | ClassVal [(Id, Valor)]
             | ObjectVal Endereco 
             | Fun ([Valor] -> Ambiente -> Estado -> Heap -> (Valor, Ambiente, Estado, Heap)) 
             | Nulo 
@@ -42,6 +45,7 @@ data Valor = Num Numero
 instance Show Valor where
     show (Num n) = "Num " ++ show n
     show (BoolVal b) = "Bool " ++ show b
+    show (ClassVal campos) = "{ " ++ intercalate ", " (map (\(id, valor) -> id ++ ": " ++ show valor) campos) ++ " }"
     show (ObjectVal e) = "ObjectRef(" ++ show e ++ ")"
     show (Fun _) = "<function>"
     show Nulo = "nulo"
@@ -122,7 +126,7 @@ intComando ctx amb est heap cmd = case cmd of
 
     (For c1 e c2 c3) -> error "Funcionalidade 'For' nao implementada."
 
-    (Classe id params defs) -> error "Funcionalidade 'Declaracao de Classe' nao implementada."
+    (Class id params defs) -> error "Funcionalidade 'Declaracao de Classe' nao implementada."
 
     (CmdExpr expr) -> error "Funcionalidade 'Comando de Expressao' (CmdExpr) nao implementada."
 
@@ -136,7 +140,18 @@ intWhile ctx amb est heap (While cond corpo) =
         (BoolVal False) -> (amb1, est1, heap1)
         _ -> error ("Erro de Tipo: A condição do 'while' deve ser um Booleano, mas foi: " ++ show resultado)
 
-{-
+intClass :: (Maybe Endereco) -> Ambiente -> Estado -> Heap -> Comando -> (Ambiente, Estado, Heap)
+intClass ctx amb est heap (Class cid params defs) =
+    let campos =
+            map (\x -> (x, Nulo)) params
+            ++ 
+            map (\(Def nome corpo) -> (nome, Fun (\args amb est heap -> let (val, _, _, _) = intExpressao ctx amb est heap corpo in (val, amb, est, heap))) ) defs   
+
+        classVal = ClassVal campos                   
+        novoAmbiente = (cid, classVal) : amb         
+    in (novoAmbiente, est, heap)
+
+
 -- i = 10
 testeAtr :: Comando
 testeAtr = Atr (LVar "i") (Lit 10)
@@ -151,4 +166,10 @@ testeWhile :: Comando
 testeWhile = Seq (Atr (LVar "i") (Lit 0))
                  (While (Apl (Var (LVar "menorQue")) [Var (LVar "i"), Lit 3])
                         (Atr (LVar "i") (Som (Var (LVar "i")) (Lit 1))))
--}
+
+-- class Pessoa { nome; idade; cumprimentar() { ... } aniversario() { ... } }
+testeClass :: Comando
+testeClass = Class "Pessoa" ["nome", "idade"] 
+                [ Def "cumprimentar" (Lam [] (Lit 0))  -- corpo de teste (será ignorado agora)
+                , Def "aniversario" (Lam [] (Lit 0))
+                ]
