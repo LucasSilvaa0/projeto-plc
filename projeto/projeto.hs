@@ -152,6 +152,7 @@ intClass ctx amb est heap (Class cid params defs) =
     in (novoAmbiente, est, heap)
 
 
+{-
 -- i = 10
 testeAtr :: Comando
 testeAtr = Atr (LVar "i") (Lit 10)
@@ -173,3 +174,4 @@ testeClass = Class "Pessoa" ["nome", "idade"]
                 [ Def "cumprimentar" (Lam [] (Lit 0))  -- corpo de teste (será ignorado agora)
                 , Def "aniversario" (Lam [] (Lit 0))
                 ]
+-}
