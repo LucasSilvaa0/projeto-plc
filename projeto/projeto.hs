@@ -126,7 +126,7 @@ intComando ctx amb est heap cmd = case cmd of
 
     (For c1 e c2 c3) -> error "Funcionalidade 'For' nao implementada."
 
-    (Class id params defs) -> error "Funcionalidade 'Declaracao de Classe' nao implementada."
+    (Class id params defs) -> intClass ctx amb est heap (Class id params defs)
 
     (CmdExpr expr) -> error "Funcionalidade 'Comando de Expressao' (CmdExpr) nao implementada."
 
@@ -151,7 +151,6 @@ intClass ctx amb est heap (Class cid params defs) =
         novoAmbiente = (cid, classVal) : amb         
     in (novoAmbiente, est, heap)
 
-
 {-
 -- i = 10
 testeAtr :: Comando
@@ -170,8 +169,12 @@ testeWhile = Seq (Atr (LVar "i") (Lit 0))
 
 -- class Pessoa { nome; idade; cumprimentar() { ... } aniversario() { ... } }
 testeClass :: Comando
-testeClass = Class "Pessoa" ["nome", "idade"] 
+testeClass = Seq (Class "Pessoa" ["nome", "idade"]
                 [ Def "cumprimentar" (Lam [] (Lit 0))  -- corpo de teste (será ignorado agora)
                 , Def "aniversario" (Lam [] (Lit 0))
-                ]
+                ])
+                (Class "Aluno" ["nome", "idade", "curso"]
+                [ Def "cumprimentar" (Lam [] (Lit 0))  -- corpo de teste (será ignorado agora)
+                , Def "aniversario" (Lam [] (Lit 0))
+                ])
 -}
