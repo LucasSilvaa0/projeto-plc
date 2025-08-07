@@ -57,6 +57,15 @@ type Ambiente = [(Id, Valor)]
 type Estado = [(Id, Valor)]
 type Heap = [(Endereco, Objeto)]
 
+intArgumentos :: (Maybe Endereco) -> Ambiente -> Estado -> Heap -> [Expressao] -> ([Valor], Ambiente, Estado, Heap)
+intArgumentos ctx amb est heap [] = ([], amb, est, heap)
+intArgumentos ctx amb est heap (expr:resto_exprs) =
+    let
+        (val, amb1, est1, heap1) = intExpressao ctx amb est heap expr
+        (vals_resto, amb2, est2, heap2) = intArgumentos ctx amb1 est1 heap1 resto_exprs
+    in
+        (val : vals_resto, amb2, est2, heap2)
+
 getVariavel :: Id -> Estado -> Valor
 getVariavel id est = case lookup id est of
     Just val -> val
@@ -91,20 +100,41 @@ intExpressao ctx amb est heap expr = case expr of
                 (Num n1, Num n2) -> (Num (n1 + n2), amb2, est2, heap2)
                 _                -> (Erro "Erro de tipo: A operacao soma espera dois numeros.", amb2, est2, heap2)
 
-    (Apl (Var (LVar "menorQue")) [e1, e2]) -> -- Precisa implementar. Está impovisado
+    (Apl (Var (LVar "menorQue")) [e1, e2]) ->
         let (v1, amb1, est1, heap1) = intExpressao ctx amb est heap e1
         in let (v2, amb2, est2, heap2) = intExpressao ctx amb1 est1 heap1 e2
             in case (v1, v2) of
                  (Num n1, Num n2) -> (BoolVal (n1 < n2), amb2, est2, heap2)
                  _                -> (Erro "Argumentos invalidos para 'menorQue'.", amb2, est2, heap2)
 
+    -- Implementação de Apl genérica
+    (Apl expr_funcao exprs_args) ->
+        let
+            (val_funcao, amb1, est1, heap1) = intExpressao ctx amb est heap expr_funcao
+            (valores_args, amb2, est2, heap2) = intArgumentos ctx amb1 est1 heap1 exprs_args
+        in
+            case val_funcao of
+                (Fun f) -> f valores_args amb2 est2 heap2
+                _       -> (Erro "Erro de tipo: Tentativa de chamar algo que nao e uma funcao.", amb2, est2, heap2)
+    
+    (Lam ids corpo) ->
+        let
+            funcao_closure = \valores_args amb_chamada est_chamada heap_chamada ->
+                if length ids /= length valores_args
+                then (Erro ("Numero incorreto de argumentos. Esperava " ++ show (length ids) ++ ", recebeu " ++ show (length valores_args)), amb_chamada, est_chamada, heap_chamada)
+                else
+                    let
+                        bindings = zip ids valores_args
+                        novo_ambiente = bindings ++ amb
+                    in intExpressao ctx novo_ambiente est_chamada heap_chamada corpo
+        in
+            (Fun funcao_closure, amb, est, heap)
+
     (Mul e1 e2) -> error "Funcionalidade 'Multiplicacao' nao implementada."
 
     (New id args) -> error "Funcionalidade 'New' nao implementada."
 
     (InstanceOf e id) -> error "Funcionalidade 'InstanceOf' nao implementada."
-
-    (Lam ids corpo) -> error "Funcionalidade 'Definicao de Funcao' (Lam) nao implementada."
 
     (CallMethod objExpr nomeMetodo args) -> error "Funcionalidade 'Chamada de Metodo' nao implementada."
 
@@ -177,4 +207,16 @@ testeClass = Seq (Class "Pessoa" ["nome", "idade"]
                 [ Def "cumprimentar" (Lam [] (Lit 0))  -- corpo de teste (será ignorado agora)
                 , Def "aniversario" (Lam [] (Lit 0))
                 ])
+
+-- soma = lambda(x, y) = x + y;
+-- resultado = soma(10, 5);
+testeFuncao :: Comando
+testeFuncao = Seq (Atr (LVar "soma") (Lam ["x", "y"] (Som (Var (LVar "x")) (Var (LVar "y")))))
+                  (Atr (LVar "resultado") (Apl (Var (LVar "soma")) [Lit 10, Lit 5]))
 -}
+
+soma = lambda(x, y) = x + y;
+resultado = soma(10, 5);
+testeFuncao :: Comando
+testeFuncao = Seq (Atr (LVar "soma") (Lam ["x", "y"] (Som (Var (LVar "x")) (Var (LVar "y")))))
+                  (Atr (LVar "resultado") (Apl (Var (LVar "soma")) [Lit 10, Lit 5]))
