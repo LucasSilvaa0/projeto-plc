@@ -82,7 +82,19 @@ intExpressao ctx amb est heap expr = case expr of
 
     (Var lvalue) -> case lvalue of
         (LVar id) -> (getValor id amb est, amb, est, heap)
-        _ -> error "Var para This ou Atributo nao implementado"
+        (LAttr objExpr attrId) ->
+            let (objVal, amb1, est1, heap1) = intExpressao ctx amb est heap objExpr -- avalia a expressão do objeto pra encontrar o ponteiro
+            in case objVal of
+                (ObjectVal end) -> -- se for um ponteiro de objeto
+                    case lookup end heap1 of -- usa o endereço para procurar o objeto na heap
+                        Just (className, attrList) -> -- se encontrou o objeto e seus atributos
+                            case lookup attrId attrList of -- procura o atributo
+                                Just attrVal -> (attrVal, amb1, est1, heap1) -- se encontrar, retorna a valor
+                                Nothing -> (Erro ("Objeto da classe '" ++ className ++ "' nao possui o atributo '" ++ attrId ++ "'."), amb1, est1, heap1)
+                        Nothing -> (Erro ("Ponteiro invalido ou objeto nao encontrado no endereco: " ++ show end), amb1, est1, heap1)
+                _ -> (Erro ("Tentativa de acessar atributo de um nao-objeto. Valor encontrado: " ++ show objVal), amb1, est1, heap1)
+
+        LThis -> error "Var para This ainda nao implementado"
 
     (Som e1 e2) ->
         let (v1, amb1, est1, heap1) = intExpressao ctx amb est heap e1
@@ -128,7 +140,9 @@ intComando ctx amb est heap cmd = case cmd of
 
     (Class id params defs) -> intClass ctx amb est heap (Class id params defs)
 
-    (CmdExpr expr) -> error "Funcionalidade 'Comando de Expressao' (CmdExpr) nao implementada."
+    (CmdExpr expr) ->
+        let (_, ambFinal, estFinal, heapFinal) = intExpressao ctx amb est heap expr -- avalia a expressão
+        in (ambFinal, estFinal, heapFinal) -- o valor final é ignorado, mas o ambiente, estado e heap são atualizados
 
 intWhile :: (Maybe Endereco) -> Ambiente -> Estado -> Heap -> Comando -> (Ambiente, Estado, Heap)
 intWhile ctx amb est heap (While cond corpo) =
