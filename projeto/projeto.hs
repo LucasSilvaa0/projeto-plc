@@ -170,12 +170,34 @@ intExpressao ctx amb est heap expr = case expr of
     (CallMethod objExpr nomeMetodo args) -> error "Funcionalidade 'Chamada de Metodo' nao implementada."
 
 
-
+{-
+data LValue = LVar Id
+            | LAttr Expressao Id
+            | LThis
+            deriving (Show)
+-}
 intComando ctx amb est heap cmd = case cmd of
     (Atr (LVar id) expr) ->
         let (val, ambAposExpr, estAposExpr, heapAposExpr) = intExpressao ctx amb est heap expr
             novoEstado = setVariavel id val estAposExpr
         in (ambAposExpr, novoEstado, heapAposExpr)
+    
+    (Atr (LAttr objExpr attrId) expr) ->
+        let (objVal, amb1, est1, heap1) = intExpressao ctx amb est heap objExpr -- avalia a expressão do objeto pra encontrar o ponteiro
+            (val, amb2, est2, heap2) = intExpressao ctx amb1 est1 heap1 expr -- avalia a expressão do valor a ser atribuído
+        in case (objVal, val) of
+            (ObjectVal end, _) -> -- se for um ponteiro de objeto
+                case lookup end heap2 of -- usa o endereço para procurar o objeto na heap
+                    Just (className, attrList) -> -- se encontrou o objeto e seus atributos
+                        if any (\(idExistente, _) -> idExistente == attrId) attrList then
+                            let novoAttrList = map (\(idExistente, valExistente) -> if idExistente == attrId then (idExistente, val) else (idExistente, valExistente)) attrList
+                                novoObjeto = (className, novoAttrList)
+                                novoHeap = map (\(e, obj) -> if e == end then (e, novoObjeto) else (e, obj)) heap2
+                            in (amb2, est2, novoHeap) -- retorna o ambiente e estado atualizados com a nova heap
+                        else
+                            (amb2, est2, heap2) -- atributo não existe; mantém a heap inalterada
+                    Nothing -> (amb2, est2, heap2) -- ponteiro inválido; mantém a heap inalterada
+            _ -> (amb2, est2, heap2) -- tentativa de atribuir a um não-objeto; mantém a heap inalterada
 
     (Seq c1 c2) ->
         let (amb1, est1, heap1) = intComando ctx amb est heap c1
@@ -306,3 +328,12 @@ testeTrocaDeClasse =
             )
         )
 -}
+
+testeVariaveisDeObjetos :: Comando -- classe Ponto { x; y }; classe Carro { velocidade }; p = new Ponto(); p = new Carro();
+testeVariaveisDeObjetos =
+    Seq (Class "Ponto" ["x", "y"] [])
+        (Seq (Class "Carro" ["velocidade"] [])
+            (Seq (Atr (LVar "p") (New "Carro"))
+                 (Atr (LAttr (Var (LVar "p")) "velocidade") (Lit 100))
+            )
+        )
