@@ -12,7 +12,7 @@ data Expressao = Lit Numero
                 | Var LValue 
                 | Som Expressao Expressao 
                 | Mul Expressao Expressao 
-                | New Id [Expressao] 
+                | New Id -- retirar [Expressao] pois new não recebe argumentos
                 | InstanceOf Expressao Id 
                 | Lam [Id] Expressao 
                 | CallMethod Expressao Id [Expressao] 
@@ -112,7 +112,7 @@ intExpressao ctx amb est heap expr = case expr of
 
     (Mul e1 e2) -> error "Funcionalidade 'Multiplicacao' nao implementada."
 
-    (New id args) -> error "Funcionalidade 'New' nao implementada."
+    (New id) -> intNew ctx amb est heap id
 
     (InstanceOf e id) -> error "Funcionalidade 'InstanceOf' nao implementada."
 
@@ -143,6 +143,26 @@ intComando ctx amb est heap cmd = case cmd of
     (CmdExpr expr) ->
         let (_, ambFinal, estFinal, heapFinal) = intExpressao ctx amb est heap expr -- avalia a expressão
         in (ambFinal, estFinal, heapFinal) -- o valor final é ignorado, mas o ambiente, estado e heap são atualizados
+
+intNew :: (Maybe Endereco) -> Ambiente -> Estado -> Heap -> Id -> (Valor, Ambiente, Estado, Heap)
+intNew ctx amb est heap classId =
+    -- 1. Procura a definição da classe no Ambiente.
+    case lookup classId amb of
+        -- 2. Encontrou! Agora verifica se é de fato um ClassVal.
+        Just (ClassVal campos) ->
+            -- 3. Pega um novo endereço livre na Heap.
+            let novoEnd = length heap + 1 -- Estratégia de alocação simples
+                -- 4. Cria a instância do objeto usando os campos definidos na classe.
+                novoObjeto = (classId, campos)
+                -- 5. Adiciona o novo objeto à Heap.
+                novaHeap = heap ++ [(novoEnd, novoObjeto)]
+            -- 6. Retorna o ponteiro para o novo objeto. O Ambiente e o Estado não mudam.
+            in (ObjectVal novoEnd, amb, est, novaHeap)
+
+        -- Encontrou um nome, mas não é uma classe.
+        Just _ -> (Erro ("'" ++ classId ++ "' nao e uma classe."), amb, est, heap)
+        -- Não encontrou nenhuma definição com esse nome.
+        Nothing -> (Erro ("Classe '" ++ classId ++ "' nao foi definida."), amb, est, heap)
 
 intWhile :: (Maybe Endereco) -> Ambiente -> Estado -> Heap -> Comando -> (Ambiente, Estado, Heap)
 intWhile ctx amb est heap (While cond corpo) =
@@ -191,4 +211,20 @@ testeClass = Seq (Class "Pessoa" ["nome", "idade"]
                 [ Def "cumprimentar" (Lam [] (Lit 0))  -- corpo de teste (será ignorado agora)
                 , Def "aniversario" (Lam [] (Lit 0))
                 ])
+
+testeNew :: Comando -- classe Ponto { x; y }; p = new Ponto();
+testeNew = Seq (Class "Ponto" ["x", "y"] [])
+               (Atr (LVar "p") (New "Ponto"))
+
+testeErroNew :: Comando -- c = new Carro(); (Carro não foi definida)
+testeErroNew = Atr (LVar "c") (New "Carro")
+
+testeTrocaDeClasse :: Comando -- classe Ponto { x; y }; classe Carro { velocidade }; p = new Ponto(); p = new Carro();
+testeTrocaDeClasse =
+    Seq (Class "Ponto" ["x", "y"] [])
+        (Seq (Class "Carro" ["velocidade"] [])
+            (Seq (Atr (LVar "p") (New "Ponto"))
+                 (Atr (LVar "p") (New "Carro"))
+            )
+        )
 -}
