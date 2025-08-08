@@ -162,6 +162,40 @@ intExpressao ctx amb est heap expr = case expr of
             (Num n1, Num n2)   -> (BoolVal (n1 == n2), amb2, est2, heap2)
             (BoolVal b1, BoolVal b2) -> (BoolVal (b1 == b2), amb2, est2, heap2)
             _                  -> (Erro "Erro de tipo: A operacao '==' so compara numeros ou booleanos.", amb2, est2, heap2)
+    (MenorIgual e1 e2) ->
+        let (v1, amb1, est1, heap1) = intExpressao ctx amb est heap e1
+            (v2, amb2, est2, heap2) = intExpressao ctx amb1 est1 heap1 e2
+        in case (v1, v2) of
+            (Num n1, Num n2) -> (BoolVal (n1 <= n2), amb2, est2, heap2)
+            _                -> (Erro "Erro de tipo: A operacao '<=' espera dois numeros.", amb2, est2, heap2)
+    (MaiorIgual e1 e2) ->
+        let (v1, amb1, est1, heap1) = intExpressao ctx amb est heap e1
+            (v2, amb2, est2, heap2) = intExpressao ctx amb1 est1 heap1 e2
+        in case (v1, v2) of
+            (Num n1, Num n2) -> (BoolVal (n1 >= n2), amb2, est2, heap2)
+            _                -> (Erro "Erro de tipo: A operacao '>=' espera dois numeros.", amb2, est2, heap2)
+
+    (Apl expr_funcao exprs_args) ->
+        let
+            (val_funcao, amb1, est1, heap1) = intExpressao ctx amb est heap expr_funcao
+            (valores_args, amb2, est2, heap2) = intArgumentos ctx amb1 est1 heap1 exprs_args
+        in
+            case val_funcao of
+                (Fun f) -> f valores_args amb2 est2 heap2
+                _       -> (Erro "Erro de tipo: Tentativa de chamar algo que nao e uma funcao.", amb2, est2, heap2)
+    
+    (Lam ids corpo) ->
+        let
+            funcao_closure = \valores_args amb_chamada est_chamada heap_chamada ->
+                if length ids /= length valores_args
+                then (Erro ("Numero incorreto de argumentos. Esperava " ++ show (length ids) ++ ", recebeu " ++ show (length valores_args)), amb_chamada, est_chamada, heap_chamada)
+                else
+                    let
+                        bindings = zip ids valores_args
+                        novo_ambiente = bindings ++ amb
+                    in intExpressao ctx novo_ambiente est_chamada heap_chamada corpo
+        in
+            (Fun funcao_closure, amb, est, heap)
 
     (New id) -> intNew ctx amb est heap id
 
