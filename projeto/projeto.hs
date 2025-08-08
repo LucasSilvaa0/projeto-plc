@@ -327,7 +327,6 @@ testeTrocaDeClasse =
                  (Atr (LVar "p") (New "Carro"))
             )
         )
--}
 
 testeVariaveisDeObjetos :: Comando -- classe Ponto { x; y }; classe Carro { velocidade }; p = new Ponto(); p = new Carro();
 testeVariaveisDeObjetos =
@@ -337,3 +336,5 @@ testeVariaveisDeObjetos =
                  (Atr (LAttr (Var (LVar "p")) "velocidade") (Lit 100))
             )
         )
+
+-}
