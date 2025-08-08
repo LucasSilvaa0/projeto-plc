@@ -146,22 +146,14 @@ intComando ctx amb est heap cmd = case cmd of
 
 intNew :: (Maybe Endereco) -> Ambiente -> Estado -> Heap -> Id -> (Valor, Ambiente, Estado, Heap)
 intNew ctx amb est heap classId =
-    -- 1. Procura a definição da classe no Ambiente.
-    case lookup classId amb of
-        -- 2. Encontrou! Agora verifica se é de fato um ClassVal.
-        Just (ClassVal campos) ->
-            -- 3. Pega um novo endereço livre na Heap.
+    case lookup classId amb of -- procura a definição da classe no ambiente
+        Just (ClassVal campos) -> -- se for uma classe
             let novoEnd = length heap + 1 -- Estratégia de alocação simples
-                -- 4. Cria a instância do objeto usando os campos definidos na classe.
-                novoObjeto = (classId, campos)
-                -- 5. Adiciona o novo objeto à Heap.
-                novaHeap = heap ++ [(novoEnd, novoObjeto)]
-            -- 6. Retorna o ponteiro para o novo objeto. O Ambiente e o Estado não mudam.
-            in (ObjectVal novoEnd, amb, est, novaHeap)
+                novoObjeto = (classId, campos) -- cria a instância do objeto
+                novaHeap = heap ++ [(novoEnd, novoObjeto)] -- adiciona o novo objeto na heap
+            in (ObjectVal novoEnd, amb, est, novaHeap) -- retorna o ponteiro para o novo objeto
 
-        -- Encontrou um nome, mas não é uma classe.
         Just _ -> (Erro ("'" ++ classId ++ "' nao e uma classe."), amb, est, heap)
-        -- Não encontrou nenhuma definição com esse nome.
         Nothing -> (Erro ("Classe '" ++ classId ++ "' nao foi definida."), amb, est, heap)
 
 intWhile :: (Maybe Endereco) -> Ambiente -> Estado -> Heap -> Comando -> (Ambiente, Estado, Heap)
