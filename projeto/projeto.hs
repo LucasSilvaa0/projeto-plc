@@ -9,6 +9,7 @@ data LValue = LVar Id
             deriving (Show)
 
 data Expressao = Lit Numero
+                | Str String
                 | Var LValue
                 | Som Expressao Expressao
                 | Sub Expressao Expressao
@@ -44,7 +45,7 @@ data Valor = Num Numero
             | BoolVal Bool
             | ClassVal [(Id, Valor)]
             | ObjectVal Endereco
-            | Fun ([Valor] -> Ambiente -> Estado -> Heap -> (Valor, Ambiente, Estado, Heap))
+            | Fun (Maybe Endereco -> [Valor] -> Ambiente -> Estado -> Heap -> (Valor, Ambiente, Estado, Heap))
             | Nulo
             | Erro String
 
@@ -56,7 +57,6 @@ instance Show Valor where
     show (Fun _) = "<function>"
     show Nulo = "nulo"
     show (Erro s) = "Erro: " ++ s
-
 
 type Objeto = (Id, [(Id, Valor)])
 type Ambiente = [(Id, Valor)]
@@ -181,12 +181,13 @@ intExpressao ctx amb est heap expr = case expr of
             (valores_args, amb2, est2, heap2) = intArgumentos ctx amb1 est1 heap1 exprs_args
         in
             case val_funcao of
-                (Fun f) -> f valores_args amb2 est2 heap2
+                (Fun f) -> f ctx valores_args amb2 est2 heap2
                 _       -> (Erro "Erro de tipo: Tentativa de chamar algo que nao e uma funcao.", amb2, est2, heap2)
+
     
     (Lam ids corpo) ->
         let
-            funcao_closure = \valores_args amb_chamada est_chamada heap_chamada ->
+            funcao_closure = \ctx valores_args amb_chamada est_chamada heap_chamada ->
                 if length ids /= length valores_args
                 then (Erro ("Numero incorreto de argumentos. Esperava " ++ show (length ids) ++ ", recebeu " ++ show (length valores_args)), amb_chamada, est_chamada, heap_chamada)
                 else
@@ -194,6 +195,7 @@ intExpressao ctx amb est heap expr = case expr of
                         bindings = zip ids valores_args
                         novo_ambiente = bindings ++ amb
                     in intExpressao ctx novo_ambiente est_chamada heap_chamada corpo
+
         in
             (Fun funcao_closure, amb, est, heap)
 
@@ -201,15 +203,19 @@ intExpressao ctx amb est heap expr = case expr of
 
     (InstanceOf e id) -> error "Funcionalidade 'InstanceOf' nao implementada."
 
-    (CallMethod objExpr nomeMetodo args) -> error "Funcionalidade 'Chamada de Metodo' nao implementada."
+    (CallMethod objExpr nomeMetodo args) ->
+        let (objVal, amb1, est1, heap1) = intExpressao ctx amb est heap objExpr
+        in case objVal of
+            (ObjectVal end) ->
+                case lookup end heap1 of
+                    Just (className, attrList) ->
+                        let (argVals, amb2, est2, heap2) = intArgumentos ctx amb1 est1 heap1 args
+                        in case lookup nomeMetodo attrList of
+                            Just (Fun f) -> f (Just end) argVals amb2 est2 heap2
+                            _ -> (Erro ("Metodo '" ++ nomeMetodo ++ "' nao encontrado na classe '" ++ className ++ "'."), amb2, est2, heap2)
+                    Nothing -> (Erro ("Ponteiro invalido ou objeto nao encontrado no endereco: " ++ show end), amb1, est1, heap1)
+            _ -> (Erro ("Tentativa de chamar metodo em um nao-objeto. Valor encontrado: " ++ show objVal), amb1, est1, heap1)
 
-
-{-
-data LValue = LVar Id
-            | LAttr Expressao Id
-            | LThis
-            deriving (Show)
--}
 intComando ctx amb est heap cmd = case cmd of
     (Atr (LVar id) expr) ->
         let (val, ambAposExpr, estAposExpr, heapAposExpr) = intExpressao ctx amb est heap expr
@@ -288,13 +294,25 @@ intClass ctx amb est heap (Class cid params defs) =
     let campos =
             map (\x -> (x, Nulo)) params
             ++ 
-            map (\(Def nome corpo) -> (nome, Fun (\args amb est heap -> let (val, _, _, _) = intExpressao ctx amb est heap corpo in (val, amb, est, heap))) ) defs   
+            map (\(Def nome corpo) -> 
+                (nome, Fun (\ctx args amb_chamada est_chamada heap_chamada -> 
+                    case corpo of
+                        Lam ids body ->
+                            if length ids /= length args then
+                                (Erro ("Numero incorreto de argumentos."), amb_chamada, est_chamada, heap_chamada)
+                            else
+                                let bindings = zip ids args
+                                    novoAmb = bindings ++ amb_chamada
+                                in intExpressao ctx novoAmb est_chamada heap_chamada body
+                        _ -> intExpressao ctx amb_chamada est_chamada heap_chamada corpo
+                ))) defs
+
 
         classVal = ClassVal campos                   
         novoAmbiente = (cid, classVal) : amb         
     in (novoAmbiente, est, heap)
 
-{-
+{- Testes
 -- i = 10; j = i + 5
 testeSeq :: Comando
 testeSeq = Seq (Atr (LVar "i") (Lit 10))
@@ -318,33 +336,32 @@ testeFuncao =
 -- for (i = 0; i < 5; i = i + 1) {
 --   soma = soma + i;
 -- }
-testeFor :: Comando
-testeFor =
-  Seq
-    (Atr (LVar "soma") (Lit 0))
-    (For
-      (Atr (LVar "i") (Lit 0))
-      (Menor (Var (LVar "i")) (Lit 5))
-      (Atr (LVar "i") (Som (Var (LVar "i")) (Lit 1)))
-      (Atr (LVar "soma") (Som (Var (LVar "soma")) (Var (LVar "i"))))
-    )
+-- testeFor :: Comando
+-- testeFor =
+--   Seq
+--     (Atr (LVar "soma") (Lit 0))
+--     (For
+--       (Atr (LVar "i") (Lit 0))
+--       (Menor (Var (LVar "i")) (Lit 5))
+--       (Atr (LVar "i") (Som (Var (LVar "i")) (Lit 1)))
+--       (Atr (LVar "soma") (Som (Var (LVar "soma")) (Var (LVar "i"))))
+--     )
 
 -- Testando For para fatorial para cobrir os outros operadores
 
 -- fatorial = 1;
 -- for (i = 5; i > 0; i = i - 1) {
 --   fatorial = fatorial * i;
--- }
 testeFor :: Comando
 testeFor =
-  Seq
-    (Atr (LVar "fatorial") (Lit 1))
-    (For
-      (Atr (LVar "i") (Lit 5))
-      (Maior (Var (LVar "i")) (Lit 0))
-      (Atr (LVar "i") (Sub (Var (LVar "i")) (Lit 1)))
-      (Atr (LVar "fatorial") (Mul (Var (LVar "fatorial")) (Var (LVar "i"))))
-    )
+    Seq
+        (Atr (LVar "fatorial") (Lit 1))
+        (For
+        (Atr (LVar "i") (Lit 5))
+        (Maior (Var (LVar "i")) (Lit 0))
+        (Atr (LVar "i") (Sub (Var (LVar "i")) (Lit 1)))
+        (Atr (LVar "fatorial") (Mul (Var (LVar "fatorial")) (Var (LVar "i"))))
+        )
 
 testeNew :: Comando -- classe Ponto { x; y }; p = new Ponto();
 testeNew = Seq (Class "Ponto" ["x", "y"] [])
@@ -362,12 +379,19 @@ testeTrocaDeClasse =
             )
         )
 
-testeVariaveisDeObjetos :: Comando -- classe Ponto { x; y }; classe Carro { velocidade }; p = new Ponto(); p = new Carro();
+-- testeVariaveisDeObjetos :: Comando -- classe Ponto { x; y }; classe Carro { velocidade }; p = new Ponto(); p = new Carro();
+testeVariaveisDeObjetos :: Comando 
 testeVariaveisDeObjetos =
     Seq (Class "Ponto" ["x", "y"] [])
-        (Seq (Class "Carro" ["velocidade"] [])
+        (Seq (Class "Carro" ["velocidade"]
+                [ Def "dobro" (Mul (Var (LAttr (Var LThis) "velocidade")) (Lit 2)) ]
+             )
             (Seq (Atr (LVar "p") (New "Carro"))
-                 (Atr (LAttr (Var (LVar "p")) "velocidade") (Lit 100))
+                 (Seq (Atr (LAttr (Var (LVar "p")) "velocidade") (Lit 100))
+                      (Seq (Atr (LAttr (Var (LVar "p")) "velocidade") (CallMethod (Var (LVar "p")) "dobro" []))
+                           (Atr (LAttr (Var (LVar "p")) "velocidade") (CallMethod (Var (LVar "p")) "dobro" []))
+                      )
+                 )
             )
         )
 
