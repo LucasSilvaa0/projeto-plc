@@ -3,14 +3,17 @@ import Data.List (intercalate)
 type Id = String
 type Numero = Double
 
+-- LValue representa algo que pode estar do lado esquerdo de uma atribuição
 data LValue = LVar Id
             | LAttr Expressao Id
             | LThis
             deriving (Show)
 
+-- Expressao representa qualquer construção da linguagem que produz um valor
 data Expressao = Lit Numero
                 | Str String
                 | Var LValue
+                -- operações aritméticas e lógicas
                 | Som Expressao Expressao
                 | Sub Expressao Expressao
                 | Mul Expressao Expressao
@@ -20,6 +23,7 @@ data Expressao = Lit Numero
                 | MaiorIgual Expressao Expressao
                 | MenorIgual Expressao Expressao
                 | Igual Expressao Expressao
+                -- funcionalidades de OO e funções
                 | New Id
                 | InstanceOf Expressao Id
                 | Lam [Id] Expressao
@@ -27,20 +31,23 @@ data Expressao = Lit Numero
                 | Apl Expressao [Expressao]
                 deriving (Show)
 
+-- Comando representa uma ação que altera o estado ou controla o fluxo
 data Comando = Atr LValue Expressao
                 | Seq Comando Comando
                 | If Expressao Comando Comando
                 | While Expressao Comando
                 | For Comando Expressao Comando Comando
                 | Class Id [Id] [Definicao]
-                | CmdExpr Expressao
+                | CmdExpr Expressao -- ponte que permite que uma Expressao (como uma chamada de método) seja usada como um comando, descartando seu valor de retorno
                 deriving (Show)
 
+-- Definicao é um tipo auxiliar para definir métodos dentro de uma classe
 data Definicao = Def Id Expressao
                 deriving (Show)
 
 type Endereco = Int
 
+-- Valor representa o resultado de uma expressão avaliada
 data Valor = Num Numero
             | BoolVal Bool
             | ClassVal [(Id, Valor)]
@@ -59,15 +66,16 @@ instance Show Valor where
     show (Erro s) = "Erro: " ++ s
 
 type Objeto = (Id, [(Id, Valor)])
-type Ambiente = [(Id, Valor)]
-type Estado = [(Id, Valor)]
-type Heap = [(Endereco, Objeto)]
+type Ambiente = [(Id, Valor)] -- guarda definições estáticas (classes, funções) e não muda com atribuições
+type Estado = [(Id, Valor)] -- guarda o valor de variáveis mutáveis e muda constantemente com atribuições
+type Heap = [(Endereco, Objeto)] -- guarda as instâncias de objetos criadas com 'new'
 
 
 isTrue :: Valor -> Bool
 isTrue (BoolVal b) = b
 isTrue _           = False
 
+-- avalia uma lista de expressões em ordem, garantindo que os efeitos colaterais de um argumento sejam propagados para a avaliação do próximo
 intArgumentos :: (Maybe Endereco) -> Ambiente -> Estado -> Heap -> [Expressao] -> ([Valor], Ambiente, Estado, Heap)
 intArgumentos ctx amb est heap [] = ([], amb, est, heap)
 intArgumentos ctx amb est heap (expr:resto_exprs) =
@@ -89,6 +97,7 @@ setVariavel id val ((idExistente, valExistente):resto) =
     then (id, val) : resto
     else (idExistente, valExistente) : setVariavel id val resto
 
+-- é o ponto de entrada para buscas: primeiro busca por definições (Ambiente), depois por variáveis (Estado)
 getValor :: Id -> Ambiente -> Estado -> Valor
 getValor id amb est = case lookup id amb of
     Just val -> val 
@@ -216,6 +225,7 @@ intExpressao ctx amb est heap expr = case expr of
                     Nothing -> (Erro ("Ponteiro invalido ou objeto nao encontrado no endereco: " ++ show end), amb1, est1, heap1)
             _ -> (Erro ("Tentativa de chamar metodo em um nao-objeto. Valor encontrado: " ++ show objVal), amb1, est1, heap1)
 
+
 intComando ctx amb est heap cmd = case cmd of
     (Atr (LVar id) expr) ->
         let (val, ambAposExpr, estAposExpr, heapAposExpr) = intExpressao ctx amb est heap expr
@@ -281,12 +291,12 @@ intNew ctx amb est heap classId =
 
 intWhile :: (Maybe Endereco) -> Ambiente -> Estado -> Heap -> Comando -> (Ambiente, Estado, Heap)
 intWhile ctx amb est heap (While cond corpo) =
-    let (resultado, amb1, est1, heap1) = intExpressao ctx amb est heap cond
+    let (resultado, amb1, est1, heap1) = intExpressao ctx amb est heap cond -- avalia a condição
     in case resultado of
-        (BoolVal True) ->
-            let (amb2, est2, heap2) = intComando ctx amb1 est1 heap1 corpo
-            in intWhile ctx amb2 est2 heap2 (While cond corpo)
-        (BoolVal False) -> (amb1, est1, heap1)
+        (BoolVal True) -> -- se for um boleano true
+            let (amb2, est2, heap2) = intComando ctx amb1 est1 heap1 corpo -- executa o corpo
+            in intWhile ctx amb2 est2 heap2 (While cond corpo) -- recursão
+        (BoolVal False) -> (amb1, est1, heap1) -- retorna o estado atual
         _ -> error ("Erro de Tipo: A condição do 'while' deve ser um Booleano, mas foi: " ++ show resultado)
 
 intClass :: (Maybe Endereco) -> Ambiente -> Estado -> Heap -> Comando -> (Ambiente, Estado, Heap)
@@ -379,6 +389,7 @@ testeTrocaDeClasse =
             )
         )
 
+-}
 -- testeVariaveisDeObjetos :: Comando -- classe Ponto { x; y }; classe Carro { velocidade }; p = new Ponto(); p = new Carro();
 testeVariaveisDeObjetos :: Comando 
 testeVariaveisDeObjetos =
@@ -394,5 +405,3 @@ testeVariaveisDeObjetos =
                  )
             )
         )
-
--}
