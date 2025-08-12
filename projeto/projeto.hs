@@ -210,7 +210,16 @@ intExpressao ctx amb est heap expr = case expr of
 
     (New id) -> intNew ctx amb est heap id
 
-    (InstanceOf e id) -> error "Funcionalidade 'InstanceOf' nao implementada."
+    (InstanceOf e id) ->
+        let (objVal, amb1, est1, heap1) = intExpressao ctx amb est heap e
+        in case objVal of
+            (ObjectVal end) ->
+                case lookup end heap1 of
+                    Just (className, _) ->
+                        let isInstance = className == id
+                        in (BoolVal isInstance, amb1, est1, heap1)
+                    Nothing -> (Erro "Objeto nao encontrado na heap.", amb1, est1, heap1)
+            _ -> (Erro "InstanceOf exige um objeto como primeiro argumento.", amb1, est1, heap1)
 
     (CallMethod objExpr nomeMetodo args) ->
         let (objVal, amb1, est1, heap1) = intExpressao ctx amb est heap objExpr
@@ -269,7 +278,7 @@ intComando ctx amb est heap cmd = case cmd of
 
     (While cond corpo) -> intWhile ctx amb est heap (While cond corpo)
     
-    (If cond c1 c2) -> error "Funcionalidade 'If' nao implementada."
+    (If cond c1 c2) -> intIf ctx amb est heap cond c1 c2
 
     (Class id params defs) -> intClass ctx amb est heap (Class id params defs)
 
@@ -298,6 +307,14 @@ intWhile ctx amb est heap (While cond corpo) =
             in intWhile ctx amb2 est2 heap2 (While cond corpo) -- recursão
         (BoolVal False) -> (amb1, est1, heap1) -- retorna o estado atual
         _ -> error ("Erro de Tipo: A condição do 'while' deve ser um Booleano, mas foi: " ++ show resultado)
+
+intIf :: (Maybe Endereco) -> Ambiente -> Estado -> Heap -> Expressao -> Comando -> Comando -> (Ambiente, Estado, Heap)
+intIf ctx amb est heap cond c1 c2 =
+  let (condResult, amb1, est1, heap1) = intExpressao ctx amb est heap cond
+  in case condResult of
+       (BoolVal True)  -> intComando ctx amb1 est1 heap1 c1
+       (BoolVal False) -> intComando ctx amb1 est1 heap1 c2
+       _ -> error "Erro de Tipo: a condicao do 'if' deve ser um Booleano."
 
 intClass :: (Maybe Endereco) -> Ambiente -> Estado -> Heap -> Comando -> (Ambiente, Estado, Heap)
 intClass ctx amb est heap (Class cid params defs) =
@@ -405,3 +422,40 @@ testeVariaveisDeObjetos =
                  )
             )
         )
+
+-- x = 10;
+-- if (x > 5) {
+--    y = 1;
+-- } else {
+--    y = 0;
+-- }
+
+{-
+testeIf1 :: Comando
+testeIf1 =
+    Seq
+        (Atr (LVar "x") (Lit 10))
+        (If (Menor (Var (LVar "x")) (Lit 5))
+            (Atr (LVar "y") (Lit 1))
+            (Atr (LVar "y") (Lit 0)))
+-}
+
+-- Teste para InstanceOf
+-- classe Carro { velocidade };
+-- c = new Carro();
+-- ehCarro = c instanceof Carro;  // true
+-- ehPonto = c instanceof Ponto;  // false
+
+{-
+testeInstanceOf :: Comando
+testeInstanceOf =
+  Seq
+    (Class "Carro" ["velocidade"] []) 
+    (Seq
+      (Atr (LVar "c") (New "Carro")) 
+      (Seq
+        (Atr (LVar "ehCarro") (InstanceOf (Var (LVar "c")) "Carro")) 
+        (Atr (LVar "ehPonto") (InstanceOf (Var (LVar "c")) "Ponto"))
+      )
+    )
+-}
